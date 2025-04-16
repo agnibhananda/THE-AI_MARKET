@@ -3,14 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Marketplace</title>
+    <title>AI Marketplace - Trading Game</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js">
     <style>
         :root {
             --primary-color: #3b82f6;
             --secondary-color: #2563eb;
             --accent-color: #60a5fa;
             --background-color: #0f172a;
+            --background-light: #1e293b;
             --text-color: #f8fafc;
             --border-color: rgba(255, 255, 255, 0.1);
             --hover-color: #93c5fd;
@@ -19,6 +21,20 @@
             --gradient-2: #60a5fa;
             --card-gradient-1: #3b82f6;
             --card-gradient-2: #60a5fa;
+            --positive-color: #10b981;
+            --negative-color: #ef4444;
+            --neutral-color: #f59e0b;
+            --font-size-small: 0.875rem;
+            --font-size-regular: 1rem;
+            --font-size-medium: 1.125rem;
+            --font-size-large: 1.25rem;
+            --font-size-xl: 1.5rem;
+            --font-size-2xl: 2rem;
+            --font-size-3xl: 3rem;
+            --border-radius-sm: 0.25rem;
+            --border-radius-md: 0.5rem;
+            --border-radius-lg: 1rem;
+            --box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
         }
 
         * {
@@ -63,38 +79,376 @@
             background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            font-size: 3rem;
+            font-size: var(--font-size-3xl);
             font-weight: 700;
             text-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
         }
 
-        .inventory-section {
-            text-align: center;
-            margin-bottom: 3rem;
+        /* Nav tabs */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
         }
 
-        .inventory-btn {
+        .tab {
+            background: transparent;
+            color: var(--text-color);
+            opacity: 0.7;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            margin: 0 0.5rem;
+            border-radius: var(--border-radius-md);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tab:hover {
+            background: rgba(59, 130, 246, 0.1);
+            opacity: 0.9;
+        }
+
+        .tab.active {
+            background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
+            color: white;
+            opacity: 1;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .wallet-section, .market-section {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(96, 165, 250, 0.1));
+            border-radius: var(--border-radius-lg);
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .wallet-section:hover, .market-section:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(59, 130, 246, 0.3);
+        }
+
+        .wallet-section h3, .market-section h3, .transaction-section h3 {
+            background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+        }
+
+        .wallet-info {
+            font-size: var(--font-size-large);
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .profit-loss {
+            font-size: var(--font-size-medium);
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            border-radius: var(--border-radius-md);
+            display: inline-block;
+        }
+
+        .profit-loss.positive {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: var(--positive-color);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .profit-loss.negative {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--negative-color);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .profit-loss.neutral {
+            background-color: rgba(245, 158, 11, 0.2);
+            color: var(--neutral-color);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        /* Market prices */
+        .market-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .market-prices {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .price-card {
+            background: rgba(30, 41, 59, 0.5);
+            padding: 0.75rem;
+            border-radius: var(--border-radius-md);
+            text-align: center;
+            transition: transform 0.3s ease;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        .price-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+        }
+
+        .price-card .item-name {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .price-card .price {
+            font-size: var(--font-size-large);
+            font-weight: 700;
+            color: var(--accent-color);
+        }
+
+        .price-trend {
+            margin-top: 0.5rem;
+            font-size: var(--font-size-small);
+        }
+
+        .trend-up {
+            color: var(--positive-color);
+        }
+
+        .trend-down {
+            color: var(--negative-color);
+        }
+
+        /* Price chart */
+        .chart-container {
+            position: relative;
+            height: 250px;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        /* Inventory section */
+        .inventory-section {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .inventory-btn, .history-btn {
             background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
             color: white;
             border: none;
             padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
+            border-radius: var(--border-radius-md);
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
         }
 
-        .inventory-btn:hover {
+        .inventory-btn:hover, .history-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
         }
 
-        #inventory {
+        .reset-btn {
+            background: linear-gradient(45deg, #ef4444, #f87171);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--border-radius-md);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .inventory-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
             margin-top: 1rem;
-            font-size: 1.1rem;
-            color: var(--text-color);
-            opacity: 0.9;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .inventory-item {
+            background: rgba(30, 41, 59, 0.5);
+            padding: 1rem;
+            border-radius: var(--border-radius-md);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .inventory-item:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.2);
+        }
+
+        .item-details {
+            flex: 1;
+            text-align: left;
+        }
+
+        .item-pl {
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--border-radius-sm);
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .item-pl.positive {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: var(--positive-color);
+        }
+
+        .item-pl.negative {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--negative-color);
+        }
+
+        .item-pl.neutral {
+            background-color: rgba(245, 158, 11, 0.2);
+            color: var(--neutral-color);
+        }
+
+        /* Transaction history */
+        .transaction-section {
+            margin-top: 2rem;
+        }
+
+        .transaction-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 0.5rem;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) transparent;
+        }
+
+        .transaction-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .transaction-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .transaction-list::-webkit-scrollbar-thumb {
+            background-color: var(--primary-color);
+            border-radius: 3px;
+        }
+
+        .transaction-item {
+            background: rgba(30, 41, 59, 0.5);
+            padding: 1rem;
+            border-radius: var(--border-radius-md);
+            border: 1px solid var(--border-color);
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .transaction-item.buy {
+            border-left: 4px solid var(--negative-color);
+        }
+
+        .transaction-item.sell {
+            border-left: 4px solid var(--positive-color);
+        }
+
+        .transaction-type {
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--border-radius-sm);
+            text-align: center;
+            min-width: 60px;
+        }
+
+        .transaction-type.buy {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: var(--negative-color);
+        }
+
+        .transaction-type.sell {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: var(--positive-color);
+        }
+
+        .transaction-details {
+            font-size: var(--font-size-regular);
+        }
+
+        .transaction-timestamp {
+            font-size: var(--font-size-small);
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .transaction-total {
+            font-weight: 600;
+        }
+
+        .transaction-profit {
+            font-size: var(--font-size-small);
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--border-radius-sm);
+            display: inline-block;
+            margin-top: 0.25rem;
+        }
+
+        .transaction-profit.positive {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--positive-color);
+        }
+
+        .transaction-profit.negative {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--negative-color);
         }
 
         .shops-grid {
@@ -106,12 +460,15 @@
 
         .shop-box {
             background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(96, 165, 250, 0.2));
-            border-radius: 1rem;
+            border-radius: var(--border-radius-lg);
             padding: 1.5rem;
             box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2);
             transition: all 0.3s ease;
             border: 1px solid rgba(59, 130, 246, 0.3);
             backdrop-filter: blur(10px);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .shop-box:hover {
@@ -126,20 +483,31 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 1rem;
-            font-size: 1.5rem;
+            font-size: var(--font-size-xl);
             font-weight: 600;
+        }
+
+        .shop-specialty {
+            font-size: var(--font-size-small);
+            margin-bottom: 1rem;
+            background-color: rgba(16, 185, 129, 0.2);
+            color: var(--positive-color);
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--border-radius-sm);
+            display: inline-block;
         }
 
         .chat-box {
             height: 300px;
             overflow-y: auto;
             border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
+            border-radius: var(--border-radius-md);
             padding: 1rem;
             margin-bottom: 1rem;
             background: rgba(15, 23, 42, 0.5);
             scrollbar-width: thin;
             scrollbar-color: var(--primary-color) transparent;
+            flex: 1;
         }
 
         .chat-box::-webkit-scrollbar {
@@ -164,8 +532,8 @@
             flex: 1;
             padding: 0.75rem;
             border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            font-size: 1rem;
+            border-radius: var(--border-radius-md);
+            font-size: var(--font-size-regular);
             transition: all 0.3s ease;
             background: rgba(15, 23, 42, 0.5);
             color: var(--text-color);
@@ -186,7 +554,7 @@
             color: white;
             border: none;
             padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
+            border-radius: var(--border-radius-md);
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -201,10 +569,11 @@
         .message {
             margin-bottom: 0.75rem;
             padding: 0.75rem;
-            border-radius: 0.5rem;
+            border-radius: var(--border-radius-md);
             background: rgba(30, 41, 59, 0.5);
             border: 1px solid var(--border-color);
             animation: fadeIn 0.3s ease;
+            word-break: break-word;
         }
 
         @keyframes fadeIn {
@@ -222,67 +591,553 @@
             border-color: rgba(96, 165, 250, 0.3);
         }
 
+        .message.transaction {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: rgba(16, 185, 129, 0.3);
+            border-left: 4px solid var(--positive-color);
+        }
+
         .message b {
             background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
+        /* Quick trade modal */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-backdrop.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: var(--background-light);
+            border-radius: var(--border-radius-lg);
+            width: 90%;
+            max-width: 500px;
+            padding: 2rem;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .modal-backdrop.show .modal-content {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-close:hover {
+            opacity: 1;
+        }
+
+        .modal-title {
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+            background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .trade-form {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .form-group {
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        .form-label {
+            font-size: var(--font-size-small);
+            font-weight: 500;
+            opacity: 0.8;
+        }
+
+        .form-control {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.75rem;
+            border-radius: var(--border-radius-md);
+            font-size: var(--font-size-regular);
+            width: 100%;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .trade-btn {
+            background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--border-radius-md);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+            margin-top: 0.5rem;
+        }
+
+        .trade-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-color);
+            padding: 0.75rem 1rem;
+            border-radius: var(--border-radius-md);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            max-width: 300px;
+            font-size: var(--font-size-small);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(5px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .has-tooltip:hover + .tooltip {
+            opacity: 1;
+        }
+
+        /* Responsive styles */
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
             }
 
             h2 {
-                font-size: 2.5rem;
+                font-size: var(--font-size-2xl);
+            }
+
+            .dashboard {
+                grid-template-columns: 1fr;
             }
 
             .shops-grid {
                 grid-template-columns: 1fr;
             }
+            
+            .tabs {
+                flex-wrap: wrap;
+                justify-content: flex-start;
+            }
+            
+            .tab {
+                font-size: var(--font-size-small);
+                padding: 0.5rem 1rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
         }
     </style>
+    
+    <!-- Chart.js for price trends -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
         <h2>AI Marketplace</h2>
         
-        <div class="inventory-section">
-            <button class="inventory-btn" onclick="getInventory()">Check My Inventory</button>
-            <p id="inventory"></p>
+        <!-- Navigation tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="market">Market</button>
+            <button class="tab" data-tab="trading">Trading</button>
+            <button class="tab" data-tab="history">History</button>
         </div>
-
-        <div class="shops-grid">
-            <div class="shop-box">
-                <h3>ElectroMart</h3>
-                <div class="chat-box" id="chat1"></div>
-                <div class="chat-input-container">
-                    <input type="text" id="msg1" class="chat-input" placeholder="Ask ElectroMart...">
-                    <button class="send-btn" onclick="sendMessage(1)">Send</button>
+        
+        <!-- Market tab content -->
+        <div class="tab-content active" id="market-tab">
+            <div class="dashboard">
+                <div class="wallet-section">
+                    <h3>Your Trading Account</h3>
+                    <div class="wallet-info" id="wallet">Loading wallet...</div>
+                    <div class="profit-loss neutral" id="profit-loss">Calculating P/L...</div>
+                </div>
+                <div class="market-section">
+                    <div class="market-header">
+                        <h3>Market Prices</h3>
+                        <div class="price-refresh">
+                            <button class="inventory-btn" onclick="updateMarketPrices()">Refresh Prices</button>
+                        </div>
+                    </div>
+                    <div class="market-prices" id="market-prices">
+                        <!-- Market prices will be loaded here -->
+                        <div class="loading-container">
+                            <div class="loading"></div>
+                        </div>
+                    </div>
+                    <!-- Price chart will appear when a price card is clicked -->
+                    <div class="chart-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
                 </div>
             </div>
-
-            <div class="shop-box">
-                <h3>CircuitWorld</h3>
-                <div class="chat-box" id="chat2"></div>
-                <div class="chat-input-container">
-                    <input type="text" id="msg2" class="chat-input" placeholder="Ask CircuitWorld...">
-                    <button class="send-btn" onclick="sendMessage(2)">Send</button>
+            
+            <div class="inventory-section">
+                <h3>Your Inventory</h3>
+                <div class="action-buttons">
+                    <button class="inventory-btn" onclick="getInventory()">Refresh Inventory</button>
+                    <button class="reset-btn" onclick="resetGame()">Reset Game</button>
+                </div>
+                <div class="inventory-list" id="inventory">
+                    <div class="loading-container">
+                        <div class="loading"></div>
+                    </div>
                 </div>
             </div>
+        </div>
+        
+        <!-- Trading tab content -->
+        <div class="tab-content" id="trading-tab">
+            <div class="shops-grid">
+                <div class="shop-box">
+                    <h3>ElectroMart</h3>
+                    <div class="shop-specialty">Specialty: Bulbs (5% discount)</div>
+                    <div class="chat-box" id="chat1"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="msg1" class="chat-input" placeholder="Ask ElectroMart to buy/sell...">
+                        <button class="send-btn" onclick="sendMessage(1)">Send</button>
+                    </div>
+                </div>
 
-            <div class="shop-box">
-                <h3>WireHub</h3>
-                <div class="chat-box" id="chat3"></div>
-                <div class="chat-input-container">
-                    <input type="text" id="msg3" class="chat-input" placeholder="Ask WireHub...">
-                    <button class="send-btn" onclick="sendMessage(3)">Send</button>
+                <div class="shop-box">
+                    <h3>CircuitWorld</h3>
+                    <div class="shop-specialty">Specialty: Resistors (10% discount)</div>
+                    <div class="chat-box" id="chat2"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="msg2" class="chat-input" placeholder="Ask CircuitWorld to buy/sell...">
+                        <button class="send-btn" onclick="sendMessage(2)">Send</button>
+                    </div>
+                </div>
+
+                <div class="shop-box">
+                    <h3>WireHub</h3>
+                    <div class="shop-specialty">Specialty: Wires (7% discount)</div>
+                    <div class="chat-box" id="chat3"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="msg3" class="chat-input" placeholder="Ask WireHub to buy/sell...">
+                        <button class="send-btn" onclick="sendMessage(3)">Send</button>
+                    </div>
                 </div>
             </div>
+        </div>
+        
+        <!-- History tab content -->
+        <div class="tab-content" id="history-tab">
+            <div class="transaction-section">
+                <h3>Transaction History</h3>
+                <div class="transaction-list" id="transaction-list">
+                    <div class="loading-container">
+                        <div class="loading"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick trade modal -->
+        <div class="modal-backdrop" id="tradeModal">
+            <div class="modal-content">
+                <button class="modal-close" onclick="closeTradeModal()">×</button>
+                <h3 class="modal-title">Quick Trade</h3>
+                <form class="trade-form" id="tradeForm">
+                    <div class="form-group">
+                        <label class="form-label">Action</label>
+                        <select class="form-control" id="tradeAction">
+                            <option value="buy">Buy</option>
+                            <option value="sell">Sell</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Item</label>
+                        <select class="form-control" id="tradeItem">
+                            <option value="Bulb">Bulb</option>
+                            <option value="Wire">Wire</option>
+                            <option value="Resistor">Resistor</option>
+                            <option value="Capacitor">Capacitor</option>
+                            <option value="Battery">Battery</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Quantity</label>
+                            <input type="number" class="form-control" id="tradeQuantity" min="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Price per unit (₹)</label>
+                            <input type="number" class="form-control" id="tradePrice" min="1" value="50">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Shop</label>
+                        <select class="form-control" id="tradeShop">
+                            <option value="1">ElectroMart</option>
+                            <option value="2">CircuitWorld</option>
+                            <option value="3">WireHub</option>
+                        </select>
+                    </div>
+                    <button type="button" class="trade-btn" onclick="executeTrade()">Execute Trade</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Tooltip for help -->
+        <div class="has-tooltip" style="position: fixed; bottom: 20px; right: 20px; background: rgba(59, 130, 246, 0.3); padding: 10px; border-radius: 50%; cursor: pointer;" onclick="showTradeModal()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        </div>
+        <div class="tooltip">
+            <strong>Quick Trade:</strong> Click to open quick trade panel
         </div>
     </div>
 
     <script>
+        // Global variables
+        let priceHistory = {};
+        let priceChart = null;
+        let selectedItem = null;
+        
+        // Initialize application
+        window.onload = function() {
+            getInventory();
+            updateMarketPrices();
+            getTransactionHistory();
+            
+            // Set interval to refresh market prices every 30 seconds
+            setInterval(updateMarketPrices, 30000);
+            
+            // Set up tab navigation
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // Remove active class from all tabs
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    // Add active class to clicked tab
+                    this.classList.add('active');
+                    
+                    // Hide all tab content
+                    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                    // Show content for active tab
+                    const tabId = this.getAttribute('data-tab');
+                    document.getElementById(tabId + '-tab').classList.add('active');
+                });
+            });
+        };
+        
+        // Function to update market prices
+        function updateMarketPrices() {
+            const marketPricesElement = document.getElementById("market-prices");
+            marketPricesElement.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
+            
+            fetch("/market")
+            .then(response => response.json())
+            .then(data => {
+                marketPricesElement.innerHTML = "";
+                
+                for (const [item, price] of Object.entries(data)) {
+                    const priceCard = document.createElement("div");
+                    priceCard.className = "price-card";
+                    priceCard.setAttribute("data-item", item);
+                    priceCard.onclick = function() { showPriceChart(item); };
+                    
+                    // Determine price trend
+                    let trendHtml = "";
+                    if (priceHistory[item]) {
+                        const prevPrice = priceHistory[item];
+                        if (price > prevPrice) {
+                            trendHtml = `<div class="price-trend trend-up">↑ (+${price - prevPrice})</div>`;
+                        } else if (price < prevPrice) {
+                            trendHtml = `<div class="price-trend trend-down">↓ (-${prevPrice - price})</div>`;
+                        } else {
+                            trendHtml = `<div class="price-trend">→ (0)</div>`;
+                        }
+                    }
+                    
+                    priceCard.innerHTML = `
+                        <div class="item-name">${item}</div>
+                        <div class="price">₹${price}</div>
+                        ${trendHtml}
+                    `;
+                    
+                    marketPricesElement.appendChild(priceCard);
+                    
+                    // Store current price for next comparison
+                    priceHistory[item] = price;
+                }
+                
+                // Also update the trade modal price field with current price of selected item
+                if (selectedItem) {
+                    document.getElementById("tradePrice").value = data[selectedItem] || 50;
+                }
+                
+                // Update inventory to reflect current prices
+                getInventory();
+            })
+            .catch(error => {
+                console.error("Error fetching market prices:", error);
+                marketPricesElement.innerHTML = "<div style='text-align:center;padding:1rem;'>Error loading market prices</div>";
+            });
+        }
+        
+        // Show price chart for an item
+        function showPriceChart(item) {
+            selectedItem = item;
+            document.getElementById("tradeItem").value = item;
+            document.getElementById("tradePrice").value = priceHistory[item] || 50;
+            
+            // Show chart container
+            const chartContainer = document.querySelector('.chart-container');
+            chartContainer.style.display = 'block';
+            
+            // Get trend data for the chart
+            fetch("/market-trend")
+            .then(response => response.json())
+            .then(data => {
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                
+                // Destroy previous chart if it exists
+                if (priceChart) {
+                    priceChart.destroy();
+                }
+                
+                // Create labels (last 10 time points)
+                const labels = Array.from({length: data[item].length}, (_, i) => `T-${data[item].length - i - 1}`);
+                labels[labels.length - 1] = 'Now';
+                
+                // Create new chart
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${item} Price`,
+                            data: data[item],
+                            fill: false,
+                            borderColor: '#3b82f6',
+                            tension: 0.1,
+                            pointBackgroundColor: '#60a5fa',
+                            pointBorderColor: '#3b82f6',
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error("Error fetching market trend data:", error);
+            });
+        }
+
+        // Send chat message to shop
         function sendMessage(shopId) {
             let msgInput = document.getElementById("msg" + shopId);
             let chatBox = document.getElementById("chat" + shopId);
@@ -308,10 +1163,17 @@
             .then(data => {
                 // Add shop response with animation
                 const shopMessageElement = document.createElement("div");
-                shopMessageElement.className = "message shop";
+                shopMessageElement.className = data.transaction ? "message transaction" : "message shop";
                 shopMessageElement.innerHTML = `<b>${data.shop_name}:</b> ${data.reply}`;
                 chatBox.appendChild(shopMessageElement);
                 chatBox.scrollTop = chatBox.scrollHeight;
+                
+                // If transaction occurred, update inventory and market prices
+                if (data.transaction) {
+                    getInventory();
+                    updateMarketPrices();
+                    getTransactionHistory();
+                }
             })
             .catch(error => {
                 console.error("Error:", error);
@@ -323,23 +1185,170 @@
             });
         }
 
+        // Get inventory data
         function getInventory() {
             const inventoryElement = document.getElementById("inventory");
-            inventoryElement.style.opacity = "0";
+            const walletElement = document.getElementById("wallet");
+            const profitLossElement = document.getElementById("profit-loss");
+            
+            inventoryElement.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
             
             fetch("/inventory")
             .then(response => response.json())
             .then(data => {
-                inventoryElement.innerText = "Your Inventory: " + data.items;
-                inventoryElement.style.opacity = "1";
+                // Update wallet
+                walletElement.innerText = data.wallet;
+                
+                // Update profit/loss
+                const plValue = data.total_profit_loss;
+                profitLossElement.innerText = plValue;
+                
+                if (plValue.includes("-")) {
+                    profitLossElement.className = "profit-loss negative";
+                } else if (plValue.includes("₹0")) {
+                    profitLossElement.className = "profit-loss neutral";
+                } else {
+                    profitLossElement.className = "profit-loss positive";
+                }
+                
+                // Update inventory items
+                inventoryElement.innerHTML = "";
+                
+                if (data.items.length === 0) {
+                    inventoryElement.innerHTML = "<div style='text-align:center;padding:1rem;'>Your inventory is empty</div>";
+                    return;
+                }
+                
+                data.items.forEach(item => {
+                    const itemElement = document.createElement("div");
+                    itemElement.className = "inventory-item";
+                    
+                    // Extract P/L information from item string
+                    const plMatch = item.match(/P\/L: ₹(-?\d+)/);
+                    let plValue = 0;
+                    let plClass = "neutral";
+                    
+                    if (plMatch) {
+                        plValue = parseInt(plMatch[1]);
+                        plClass = plValue > 0 ? "positive" : plValue < 0 ? "negative" : "neutral";
+                    }
+                    
+                    itemElement.innerHTML = `
+                        <div class="item-details">${item}</div>
+                        <div class="item-pl ${plClass}">₹${plValue}</div>
+                    `;
+                    
+                    inventoryElement.appendChild(itemElement);
+                });
             })
             .catch(error => {
                 console.error("Error:", error);
-                inventoryElement.innerText = "Error loading inventory. Please try again.";
-                inventoryElement.style.opacity = "1";
+                inventoryElement.innerHTML = "<div style='text-align:center;padding:1rem;'>Error loading inventory. Please try again.</div>";
             });
         }
-
+        
+        // Get transaction history
+        function getTransactionHistory() {
+            const transactionListElement = document.getElementById("transaction-list");
+            
+            transactionListElement.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
+            
+            fetch("/transaction-history")
+            .then(response => response.json())
+            .then(data => {
+                transactionListElement.innerHTML = "";
+                
+                if (data.transactions.length === 0) {
+                    transactionListElement.innerHTML = "<div style='text-align:center;padding:1rem;'>No transactions yet</div>";
+                    return;
+                }
+                
+                // Sort transactions by timestamp, newest first
+                data.transactions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                data.transactions.forEach(transaction => {
+                    const transactionElement = document.createElement("div");
+                    transactionElement.className = `transaction-item ${transaction.type}`;
+                    
+                    let profitHtml = '';
+                    if (transaction.type === 'sell' && transaction.hasOwnProperty('profit')) {
+                        const profitClass = transaction.profit > 0 ? 'positive' : transaction.profit < 0 ? 'negative' : '';
+                        const profitText = transaction.profit > 0 ? `+₹${transaction.profit}` : `₹${transaction.profit}`;
+                        profitHtml = `<div class="transaction-profit ${profitClass}">${profitText}</div>`;
+                    }
+                    
+                    transactionElement.innerHTML = `
+                        <div class="transaction-type ${transaction.type}">${transaction.type.toUpperCase()}</div>
+                        <div class="transaction-details">
+                            ${transaction.quantity} ${transaction.item}(s) at ₹${transaction.price} each
+                            <div class="transaction-timestamp">${transaction.timestamp}</div>
+                            ${profitHtml}
+                        </div>
+                        <div class="transaction-total">₹${transaction.total}</div>
+                    `;
+                    
+                    transactionListElement.appendChild(transactionElement);
+                });
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                transactionListElement.innerHTML = "<div style='text-align:center;padding:1rem;'>Error loading transaction history</div>";
+            });
+        }
+        
+        // Reset game
+        function resetGame() {
+            if (confirm("Are you sure you want to reset the game? This will clear your inventory, wallet balance, and transaction history.")) {
+                fetch("/reset")
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    getInventory();
+                    updateMarketPrices();
+                    getTransactionHistory();
+                    
+                    // Clear chat boxes
+                    document.querySelectorAll('.chat-box').forEach(chatBox => {
+                        chatBox.innerHTML = "";
+                    });
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    alert("Error resetting game. Please try again.");
+                });
+            }
+        }
+        
+        // Trade modal functions
+        function showTradeModal() {
+            document.getElementById('tradeModal').classList.add('show');
+        }
+        
+        function closeTradeModal() {
+            document.getElementById('tradeModal').classList.remove('show');
+        }
+        
+        function executeTrade() {
+            const action = document.getElementById('tradeAction').value;
+            const item = document.getElementById('tradeItem').value;
+            const quantity = document.getElementById('tradeQuantity').value;
+            const price = document.getElementById('tradePrice').value;
+            const shopId = document.getElementById('tradeShop').value;
+            
+            // Format message for chat
+            const message = `${action} ${quantity} ${item} at ₹${price}`;
+            
+            // Select the shop chat
+            let msgInput = document.getElementById("msg" + shopId);
+            
+            // Set message and trigger send
+            msgInput.value = message;
+            sendMessage(parseInt(shopId));
+            
+            // Close modal
+            closeTradeModal();
+        }
+        
         // Add keyboard support for sending messages
         document.querySelectorAll('.chat-input').forEach(input => {
             input.addEventListener('keypress', function(e) {
