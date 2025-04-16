@@ -1,3 +1,6 @@
-Flask
-gunicorn
-requests
+Flask==2.3.3
+Werkzeug==2.3.7
+gunicorn==20.1.0
+requests==2.28.1
+google-generativeai==0.3.1
+python-dotenv==1.0.0
