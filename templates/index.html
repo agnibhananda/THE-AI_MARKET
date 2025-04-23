@@ -206,12 +206,12 @@
             background: linear-gradient(45deg, var(--gradient-1), var(--gradient-2));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 1.25rem;
             font-size: var(--font-size-large);
             font-weight: 600;
             letter-spacing: -0.01em;
             position: relative;
             display: inline-block;
+            margin-bottom: 0.75rem;
         }
 
         .wallet-section h3::after, .market-section h3::after, .inventory-section h3::after {
@@ -225,21 +225,28 @@
             border-radius: 3px;
         }
 
+        .wallet-info-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
         .wallet-info {
-            font-size: var(--font-size-xl);
+            font-size: var(--font-size-large);
             font-weight: 700;
-            margin-bottom: 1.25rem;
             color: var(--text-color);
             background: rgba(61, 106, 235, 0.1);
-            padding: 1rem;
+            padding: 0.75rem 1rem;
             border-radius: var(--border-radius-md);
             border: 1px solid rgba(61, 106, 235, 0.15);
+            flex: 1;
+            min-width: 120px;
             text-align: center;
         }
 
         .profit-loss {
             font-size: var(--font-size-small);
-            margin-top: 0.5rem;
             padding: 0.5rem 1rem;
             border-radius: 20px;
             display: inline-block;
@@ -1417,8 +1424,10 @@
                     <div class="dashboard">
                         <div class="wallet-section">
                             <h3>Your Trading Account</h3>
-                            <div class="wallet-info" id="wallet">Loading wallet...</div>
-                            <div class="profit-loss neutral" id="profit-loss">Calculating P/L...</div>
+                            <div class="wallet-info-container">
+                                <div class="wallet-info" id="wallet">Loading wallet...</div>
+                                <div class="profit-loss neutral" id="profit-loss">Calculating P/L...</div>
+                            </div>
                         </div>
                         <div class="market-section">
                             <div class="market-header">
@@ -1575,6 +1584,7 @@
             getInventory();
             updateMarketPrices();
             getTransactionHistory();
+            loadChatHistory();
             fixChatScroll();
             
             // NO LONGER needed as we now use the server's timer
@@ -1830,6 +1840,9 @@
                 chatBox.scrollTop = chatBox.scrollHeight;
                 fixChatScroll();
                 
+                // Save chat history to localStorage
+                saveChatHistory(shopId, chatBox.innerHTML);
+                
                 // If transaction occurred, update inventory and market prices
                 if (data.transaction) {
                     getInventory();
@@ -1847,7 +1860,28 @@
                 // Ensure proper scrolling after adding error message
                 chatBox.scrollTop = chatBox.scrollHeight;
                 fixChatScroll();
+                
+                // Save chat history including error message
+                saveChatHistory(shopId, chatBox.innerHTML);
             });
+        }
+
+        // Function to save chat history to localStorage
+        function saveChatHistory(shopId, chatHTML) {
+            localStorage.setItem(`chatHistory_${shopId}`, chatHTML);
+        }
+
+        // Function to load chat history from localStorage
+        function loadChatHistory() {
+            for (let i = 1; i <= 3; i++) {
+                const chatBox = document.getElementById(`chat${i}`);
+                const savedChat = localStorage.getItem(`chatHistory_${i}`);
+                
+                if (savedChat) {
+                    chatBox.innerHTML = savedChat;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+            }
         }
 
         // Get inventory data
@@ -1963,7 +1997,7 @@
         
         // Reset game
         function resetGame() {
-            if (confirm("Are you sure you want to reset the game? This will clear your inventory, wallet balance, and transaction history.")) {
+            if (confirm("Are you sure you want to reset the game? This will clear your inventory, wallet balance, transaction history, and chat history.")) {
                 fetch("/reset")
                 .then(response => response.json())
                 .then(data => {
@@ -1972,9 +2006,10 @@
                     updateMarketPrices();
                     getTransactionHistory();
                     
-                    // Clear chat boxes
-                    document.querySelectorAll('.chat-box').forEach(chatBox => {
+                    // Clear chat boxes and localStorage
+                    document.querySelectorAll('.chat-box').forEach((chatBox, index) => {
                         chatBox.innerHTML = "";
+                        localStorage.removeItem(`chatHistory_${index + 1}`);
                     });
                 })
                 .catch(error => {
