@@ -30,7 +30,8 @@ market_context = {
     "demand": {"Bulb": 1.0, "Wire": 1.0, "Resistor": 1.0, "Capacitor": 1.0, "Battery": 1.0},
     "volatility": {"Bulb": 0.15, "Wire": 0.10, "Resistor": 0.20, "Capacitor": 0.12, "Battery": 0.25},
     "transactions": [],  # Past negotiations
-    "last_update": time.time()
+    "last_update": time.time(),
+    "next_update": time.time() + 60  # Next scheduled update time
 }
 
 # Initial user data
@@ -61,8 +62,8 @@ def update_market_prices():
     current_time = time.time()
     time_diff = current_time - market_context["last_update"]
     
-    # Only update prices if enough time has passed (every 30 seconds)
-    if time_diff < 30:
+    # Only update prices if enough time has passed (every 60 seconds)
+    if time_diff < 60:
         return
     
     for item in market_context["base_prices"]:
@@ -93,6 +94,7 @@ def update_market_prices():
         market_context["current_prices"][item] = max(1, round(new_price))
     
     market_context["last_update"] = current_time
+    market_context["next_update"] = current_time + 60  # Schedule next update
 
 @app.route('/')
 def home():
@@ -392,7 +394,11 @@ def handle_sell(shop_id, item, quantity, price, user_data):
 def market():
     """Returns current market prices"""
     update_market_prices()
-    return jsonify(market_context["current_prices"])
+    seconds_until_update = max(0, round(market_context["next_update"] - time.time()))
+    return jsonify({
+        "prices": market_context["current_prices"],
+        "next_update_in": seconds_until_update
+    })
 
 @app.route('/reset')
 def reset_game():
