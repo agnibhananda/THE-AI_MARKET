@@ -1617,19 +1617,57 @@
             const marketPricesElement = document.getElementById("market-prices");
             const timerElement = document.getElementById("price-update-timer");
             
-            marketPricesElement.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
+            // Show loading indicator but preserve current data
+            const loadingIndicator = document.createElement("div");
+            loadingIndicator.className = "loading-container";
+            loadingIndicator.innerHTML = "<div class='loading'></div>";
+            loadingIndicator.style.position = "absolute";
+            loadingIndicator.style.top = "50%";
+            loadingIndicator.style.left = "50%";
+            loadingIndicator.style.transform = "translate(-50%, -50%)";
+            loadingIndicator.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+            loadingIndicator.style.borderRadius = "8px";
+            loadingIndicator.style.padding = "20px";
+            loadingIndicator.style.zIndex = "10";
+            
+            // Only completely clear the display if it's the first load
+            if (marketPricesElement.children.length === 0) {
+                marketPricesElement.innerHTML = "<div class='loading-container'><div class='loading'></div></div>";
+            } else {
+                marketPricesElement.style.position = "relative";
+                marketPricesElement.appendChild(loadingIndicator);
+            }
             
             // Clear any existing timer
             if (updateTimerId) {
                 clearInterval(updateTimerId);
             }
             
+            // Set a timeout to handle potential server delays
+            const timeoutId = setTimeout(() => {
+                loadingIndicator.innerHTML = "<div style='text-align:center;color:white;'>Taking longer than usual...</div>";
+            }, 3000);
+            
             fetch("/market")
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                // Clear timeout since we got a response
+                clearTimeout(timeoutId);
+                
+                // Remove loading indicator if it exists
+                if (loadingIndicator.parentNode === marketPricesElement) {
+                    marketPricesElement.removeChild(loadingIndicator);
+                }
+                
+                // Clear market prices if first-time load or successful refresh
                 marketPricesElement.innerHTML = "";
                 
-                // Get prices from the new response format
+                // Get prices from the response
                 const prices = data.prices;
                 const secondsUntilUpdate = data.next_update_in;
                 
@@ -1676,8 +1714,45 @@
                 getInventory();
             })
             .catch(error => {
+                // Clear timeout if there was an error
+                clearTimeout(timeoutId);
+                
                 console.error("Error fetching market prices:", error);
-                marketPricesElement.innerHTML = "<div style='text-align:center;padding:1rem;'>Error loading market prices</div>";
+                
+                // Remove loading indicator if it exists
+                if (loadingIndicator.parentNode === marketPricesElement) {
+                    marketPricesElement.removeChild(loadingIndicator);
+                }
+                
+                // Only replace content if there was no previous data
+                if (marketPricesElement.children.length === 0 || marketPricesElement.innerHTML.includes("loading-container")) {
+                    marketPricesElement.innerHTML = "<div style='text-align:center;padding:1rem;'>Error loading market prices. <button onclick='updateMarketPrices()'>Try Again</button></div>";
+                } else {
+                    // Show error message as a notification
+                    const errorNotification = document.createElement("div");
+                    errorNotification.style.position = "absolute";
+                    errorNotification.style.top = "10px";
+                    errorNotification.style.left = "50%";
+                    errorNotification.style.transform = "translateX(-50%)";
+                    errorNotification.style.backgroundColor = "rgba(220, 38, 38, 0.9)";
+                    errorNotification.style.color = "white";
+                    errorNotification.style.padding = "8px 16px";
+                    errorNotification.style.borderRadius = "4px";
+                    errorNotification.style.zIndex = "100";
+                    errorNotification.innerText = "Failed to update prices. Will retry soon.";
+                    
+                    document.body.appendChild(errorNotification);
+                    
+                    // Remove the notification after 3 seconds
+                    setTimeout(() => {
+                        if (errorNotification.parentNode) {
+                            errorNotification.parentNode.removeChild(errorNotification);
+                        }
+                    }, 3000);
+                    
+                    // Try again after a delay
+                    setTimeout(updateMarketPrices, 10000);
+                }
             });
         }
         
@@ -2031,22 +2106,50 @@
         function executeTrade() {
             const action = document.getElementById('tradeAction').value;
             const item = document.getElementById('tradeItem').value;
-            const quantity = document.getElementById('tradeQuantity').value;
-            const price = document.getElementById('tradePrice').value;
+            const quantity = parseInt(document.getElementById('tradeQuantity').value);
+            const price = parseInt(document.getElementById('tradePrice').value);
             const shopId = document.getElementById('tradeShop').value;
+            
+            // Validate inputs
+            if (isNaN(quantity) || quantity <= 0) {
+                alert("Please enter a valid positive quantity.");
+                return;
+            }
+            
+            if (isNaN(price) || price <= 0) {
+                alert("Please enter a valid positive price.");
+                return;
+            }
             
             // Format message for chat
             const message = `${action} ${quantity} ${item} at ₹${price}`;
             
-            // Select the shop chat
-            let msgInput = document.getElementById("msg" + shopId);
+            // Show feedback
+            const tradeBtn = document.querySelector('.trade-btn');
+            const originalText = tradeBtn.textContent;
+            tradeBtn.textContent = "Processing...";
+            tradeBtn.disabled = true;
             
-            // Set message and trigger send
-            msgInput.value = message;
-            sendMessage(parseInt(shopId));
-            
-            // Close modal
-            closeTradeModal();
+            try {
+                // Select the shop chat
+                let msgInput = document.getElementById("msg" + shopId);
+                
+                // Set message and trigger send
+                msgInput.value = message;
+                sendMessage(parseInt(shopId));
+                
+                // Close modal
+                closeTradeModal();
+            } catch (error) {
+                console.error("Error executing trade:", error);
+                alert("There was an error processing your trade. Please try again.");
+            } finally {
+                // Reset button state after a short delay
+                setTimeout(() => {
+                    tradeBtn.textContent = originalText;
+                    tradeBtn.disabled = false;
+                }, 1000);
+            }
         }
 
         // Add keyboard support for sending messages
