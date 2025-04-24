@@ -150,24 +150,56 @@ def ai_response(shop_id, user_message):
     ai_model = shop["ai"]  # Unique AI per shop
     user_data = session.get('user_data', get_initial_user_data())
 
-    # 📌 AI Awareness (Each AI has the same market data but thinks differently)
+    # Calculate market trends
+    trends = {}
+    for item in market_context["current_prices"]:
+        base_price = market_context["base_prices"][item]
+        current_price = market_context["current_prices"][item]
+        trend = "stable"
+        if current_price > base_price * 1.1:
+            trend = "rising"
+        elif current_price < base_price * 0.9:
+            trend = "falling"
+        trends[item] = trend
+
+    # Get recent transactions for price analysis
+    recent_transactions = market_context["transactions"][-5:] if market_context["transactions"] else []
+    recent_prices = {}
+    for trans in recent_transactions:
+        if trans["item"] not in recent_prices:
+            recent_prices[trans["item"]] = []
+        recent_prices[trans["item"]].append(trans["price"])
+
+    # 📌 Enhanced AI Awareness
     context = f"""You are an independent AI shopkeeper in a competitive electronics marketplace.
     - Your shop: {shop['name']}
     - Your specialty: {shop['specialty']} (you offer better prices on this item)
     - Competing shops: {', '.join([s['name'] for sid, s in shops.items() if sid != shop_id])}
-    - Current Market Prices: {market_context['current_prices']}
-    - Demand Factors: {market_context['demand']}
-    - Recent Transactions: {market_context['transactions'][-3:] if market_context['transactions'] else 'None'} (last 3 deals)
     
-    IMPORTANT RULES:
-    1. You should negotiate prices based on market conditions, competition, and user strategy.
-    2. The user is trying to buy low and sell high to make profit.
-    3. For item negotiations, always give a specific price in format ₹X (example: ₹50).
-    4. If the user wants to buy or sell, use the format: "BUY/SELL [quantity] [item] for ₹[price]" to propose a deal.
-    5. You can offer better prices (about {(1-shop['discount_rate'])*100}% off) on your specialty items.
-    6. You may refuse deals that are too unfavorable to you.
-    7. Keep negotiations conversational but business-focused.
-    8. If user accepts your deal, confirm the transaction."""
+    MARKET CONDITIONS:
+    - Current Market Prices: {market_context['current_prices']}
+    - Market Trends: {trends}
+    - Demand Levels: {market_context['demand']}
+    - Recent Transactions: {recent_transactions}
+    
+    YOUR BUSINESS STRATEGY:
+    1. You specialize in {shop['specialty']} and can offer up to {(1-shop['discount_rate'])*100}% discount on it
+    2. For items with "rising" trend, you're more reluctant to sell and more eager to buy
+    3. For items with "falling" trend, you're more eager to sell and more reluctant to buy
+    4. High demand items (>1.0) command premium prices
+    5. Low demand items (<1.0) may need discounts to sell
+    
+    NEGOTIATION RULES:
+    1. Be professional but show personality
+    2. Consider market trends in your negotiations
+    3. For buying: Accept prices between 70% and 110% of market price (adjusted by demand)
+    4. For selling: Accept prices between 85% and 120% of your shop price
+    5. Mention market trends if relevant to negotiation
+    6. Maximum quantity per transaction: 50 items
+    7. Use format "BUY/SELL [quantity] [item] for ₹[price]" for deals
+    8. Explain your reasoning when rejecting offers
+    
+    Remember: You're trying to make a profit while maintaining good customer relationships."""
 
     # ✅ Corrected format for Gemini API
     response = ai_model.generate_content(f"{context}\n\nUser: {user_message}\nAI:")
@@ -296,8 +328,17 @@ def handle_buy(shop_id, item, quantity, price, user_data):
     
     shop_price = round(current_market_price * shop_specialty_discount)
     
+    # Calculate acceptable price range based on market conditions
+    min_acceptable_price = round(shop_price * 0.85)  # Shop will accept up to 15% below their price
+    max_acceptable_price = round(shop_price * 1.2)   # Shop won't sell more than 20% above their price
+    
+    # Check if quantity is reasonable (prevent exploitation)
+    max_quantity = 50  # Reasonable limit for single transaction
+    if quantity > max_quantity:
+        return f"Sorry, I can only sell up to {max_quantity} {item}s in a single transaction."
+    
     # Shop decides whether to accept user's price
-    if price >= shop_price * 0.9:  # Accept if user offers at least 90% of shop's price
+    if min_acceptable_price <= price <= max_acceptable_price:
         total_cost = price * quantity
         
         # Check if user has enough money
@@ -336,23 +377,42 @@ def handle_buy(shop_id, item, quantity, price, user_data):
         }
         
         user_data["transaction_history"].append(transaction)
+        market_context["transactions"].append(transaction)  # Add to market context for AI awareness
         session['user_data'] = user_data
+        
+        # Update market demand based on transaction
+        market_context["demand"][item] *= 1.05  # Slight increase in demand after purchase
         
         return f"Deal! You purchased {quantity} {item}(s) for ₹{price} each. Total cost: ₹{total_cost}. Your new wallet balance is ₹{user_data['wallet']}."
     else:
-        return f"I can't accept that price. The current market price for {item} is ₹{current_market_price}, and the best I can offer is ₹{shop_price} per unit."
+        if price < min_acceptable_price:
+            suggestion = min_acceptable_price
+            return f"That price is too low for {item}. Given the current market price of ₹{current_market_price}, I can offer it at ₹{suggestion} per unit."
+        else:
+            suggestion = max_acceptable_price
+            return f"That price is unusually high for {item}. I can sell it to you at ₹{suggestion} per unit instead."
 
 def handle_sell(shop_id, item, quantity, price, user_data):
     """Handle user selling to shop"""
     shop = shops[shop_id]
     current_market_price = market_context["current_prices"][item]
     
+    # Check if quantity is reasonable
+    max_quantity = 50  # Reasonable limit for single transaction
+    if quantity > max_quantity:
+        return f"Sorry, I can only buy up to {max_quantity} {item}s in a single transaction."
+    
     # Check if user has enough of the item
     if item not in user_data["inventory"] or user_data["inventory"][item]["quantity"] < quantity:
         return f"You don't have enough {item}s to sell. You have {user_data['inventory'].get(item, {}).get('quantity', 0)} but want to sell {quantity}."
     
+    # Calculate acceptable price range based on market conditions and demand
+    demand_factor = market_context["demand"][item]
+    min_acceptable_price = round(current_market_price * 0.7)  # Won't buy for more than 30% below market
+    max_acceptable_price = round(current_market_price * 1.1 * demand_factor)  # Higher demand allows higher prices
+    
     # Shop decides whether to accept user's price
-    if price <= current_market_price * 1.1:  # Accept if user asks at most 110% of market price
+    if min_acceptable_price <= price <= max_acceptable_price:
         total_earning = price * quantity
         
         # Process the sale
@@ -378,7 +438,11 @@ def handle_sell(shop_id, item, quantity, price, user_data):
         }
         
         user_data["transaction_history"].append(transaction)
+        market_context["transactions"].append(transaction)  # Add to market context for AI awareness
         session['user_data'] = user_data
+        
+        # Update market demand based on transaction
+        market_context["demand"][item] *= 0.95  # Slight decrease in demand after sale
         
         profit_message = ""
         if transaction_profit > 0:
@@ -388,7 +452,12 @@ def handle_sell(shop_id, item, quantity, price, user_data):
         
         return f"Deal! You sold {quantity} {item}(s) for ₹{price} each. Total received: ₹{total_earning}.{profit_message} Your new wallet balance is ₹{user_data['wallet']}."
     else:
-        return f"I can't pay that much for {item}. The current market price is ₹{current_market_price}, and I can offer at most ₹{round(current_market_price * 0.95)} per unit."
+        if price > max_acceptable_price:
+            suggestion = max_acceptable_price
+            return f"That price is too high for {item}. Given the current market price of ₹{current_market_price}, I can buy it at ₹{suggestion} per unit."
+        else:
+            suggestion = min_acceptable_price
+            return f"That price is unusually low for {item}. I can offer you ₹{suggestion} per unit instead."
 
 @app.route('/market')
 def market():
