@@ -31,7 +31,7 @@ market_context = {
     "volatility": {"Bulb": 0.15, "Wire": 0.10, "Resistor": 0.20, "Capacitor": 0.12, "Battery": 0.25},
     "transactions": [],  # Past negotiations
     "last_update": time.time(),
-    "next_update": time.time() + 60  # Next scheduled update time
+    "next_update": time.time() + 40  # Next scheduled update time (20 seconds)
 }
 
 # Initial user data
@@ -62,8 +62,8 @@ def update_market_prices():
     current_time = time.time()
     time_diff = current_time - market_context["last_update"]
     
-    # Only update prices if enough time has passed (every 60 seconds)
-    if time_diff < 60:
+    # Only update prices if enough time has passed (every 20 seconds instead of 60)
+    if time_diff < 40:
         return
     
     for item in market_context["base_prices"]:
@@ -94,7 +94,7 @@ def update_market_prices():
         market_context["current_prices"][item] = max(1, round(new_price))
     
     market_context["last_update"] = current_time
-    market_context["next_update"] = current_time + 60  # Schedule next update
+    market_context["next_update"] = current_time + 40  # Schedule next update (20 seconds)
 
 @app.route('/')
 def home():
@@ -242,7 +242,7 @@ def chat():
         })
 
 def process_ai_transaction(shop_id, user_message):
-    """Process transaction when user accepts an AI-proposed deal"""
+    """Process transaction when user accepts an AI-proposed deal or counters with a close offer"""
     if not market_context["transactions"]:
         return None
     
@@ -251,46 +251,104 @@ def process_ai_transaction(shop_id, user_message):
     if not shop_transactions:
         return None
     
-    # Check the last 3 AI messages to find a proposed transaction
-    acceptance_terms = ["accept", "deal", "ok", "yes", "i'll take it", "sounds good", "let's do it"]
-    if not any(term in user_message.lower() for term in acceptance_terms):
-        return None
-        
-    # Start with the most recent message and work backwards
-    for i in range(min(3, len(shop_transactions))):
-        last_ai_message = shop_transactions[-(i+1)]["reply"]
-        
-        # Look for BUY pattern in AI's message (shop selling to user)
-        # More robust pattern matching for various formulations
-        buy_match = re.search(r"(?i)(?:buy|purchase|I can sell you|I'll sell you|I will sell you)\s+(\d+)\s+([A-Za-z]+)(?:s)?\s+(?:for|at)?\s+(?:₹|rs)?(\d+)", last_ai_message)
-        if buy_match:
+    # Expanded list of acceptance terms
+    acceptance_terms = ["accept", "deal", "ok", "yes", "i'll take it", "sounds good", "let's do it", 
+                        "agreed", "fine", "good", "alright", "sure", "done", "sold"]
+    
+    # Check for counter-offer terms
+    counter_terms = ["counter", "how about", "what about", "instead", "offer", "i propose", "i'll pay"]
+    
+    # First check if this is an acceptance of a previous offer
+    is_acceptance = any(term in user_message.lower() for term in acceptance_terms)
+    is_counter = any(term in user_message.lower() for term in counter_terms)
+    
+    # If it's a clear acceptance, process the previous AI offer
+    if is_acceptance and not is_counter:
+        # Start with the most recent message and work backwards
+        for i in range(min(3, len(shop_transactions))):
+            last_ai_message = shop_transactions[-(i+1)]["reply"]
+            
+            # Look for BUY pattern in AI's message (shop selling to user)
+            buy_match = re.search(r"(?i)(?:buy|purchase|I can sell you|I'll sell you|I will sell you)\s+(\d+)\s+([A-Za-z]+)(?:s)?\s+(?:for|at)?\s+(?:₹|rs)?(\d+)", last_ai_message)
+            if buy_match:
+                try:
+                    quantity = int(buy_match.group(1))
+                    item_raw = buy_match.group(2)
+                    price = int(buy_match.group(3))
+                    
+                    # Try to match the item name with our known items
+                    item = next((i for i in market_context["current_prices"].keys() if i.lower() == item_raw.lower()), None)
+                    if item and quantity > 0 and price > 0:
+                        return handle_buy(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
+                except Exception:
+                    continue  # If there's an error, try the next message
+            
+            # Look for SELL pattern in AI's message (shop buying from user)
+            sell_match = re.search(r"(?i)(?:sell|I'll buy|I will buy|I can buy|I would buy)\s+(\d+)\s+([A-Za-z]+)(?:s)?\s+(?:for|at)?\s+(?:₹|rs)?(\d+)", last_ai_message)
+            if sell_match:
+                try:
+                    quantity = int(sell_match.group(1))
+                    item_raw = sell_match.group(2)
+                    price = int(sell_match.group(3))
+                    
+                    # Try to match the item name with our known items
+                    item = next((i for i in market_context["current_prices"].keys() if i.lower() == item_raw.lower()), None)
+                    if item and quantity > 0 and price > 0:
+                        return handle_sell(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
+                except Exception:
+                    continue  # If there's an error, try the next message
+    
+    # If it looks like a counter-offer, try to identify the item and new price
+    elif is_counter:
+        # Check for patterns like "how about 5 bulbs for 45" or "I'll pay 45 for each bulb"
+        counter_match = re.search(r"(?i)(?:.*?)(\d+)\s+([A-Za-z]+)(?:s)?(?:\s+(?:for|at)?\s+(?:₹|rs)?)?(?:\s*)(\d+)", user_message)
+        if counter_match:
             try:
-                quantity = int(buy_match.group(1))
-                item_raw = buy_match.group(2)
-                price = int(buy_match.group(3))
+                quantity = int(counter_match.group(1))
+                item_raw = counter_match.group(2)
+                price = int(counter_match.group(3))
                 
                 # Try to match the item name with our known items
                 item = next((i for i in market_context["current_prices"].keys() if i.lower() == item_raw.lower()), None)
                 if item and quantity > 0 and price > 0:
-                    return handle_buy(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
+                    # Check recent shop messages to determine if this was for buying or selling
+                    for i in range(min(2, len(shop_transactions))):
+                        last_ai_message = shop_transactions[-(i+1)]["reply"].lower()
+                        if "i can sell" in last_ai_message or "buy from me" in last_ai_message:
+                            return handle_buy(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
+                        elif "i can buy" in last_ai_message or "sell to me" in last_ai_message:
+                            return handle_sell(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
             except Exception:
-                continue  # If there's an error, try the next message
+                pass  # If parsing fails, we'll return None at the end
         
-        # Look for SELL pattern in AI's message (shop buying from user)
-        # More robust pattern matching for various formulations
-        sell_match = re.search(r"(?i)(?:sell|I'll buy|I will buy|I can buy|I would buy)\s+(\d+)\s+([A-Za-z]+)(?:s)?\s+(?:for|at)?\s+(?:₹|rs)?(\d+)", last_ai_message)
-        if sell_match:
+        # Alternative pattern: price first, then item (e.g., "I'll pay 45 for each bulb")
+        alt_counter_match = re.search(r"(?i)(?:.*?)(\d+)(?:\s+(?:for|at)?\s+(?:₹|rs)?)?(?:\s+(?:per|each|for each|for a))?\s+([A-Za-z]+)", user_message)
+        if alt_counter_match:
             try:
-                quantity = int(sell_match.group(1))
-                item_raw = sell_match.group(2)
-                price = int(sell_match.group(3))
+                price = int(alt_counter_match.group(1))
+                item_raw = alt_counter_match.group(2)
                 
                 # Try to match the item name with our known items
                 item = next((i for i in market_context["current_prices"].keys() if i.lower() == item_raw.lower()), None)
-                if item and quantity > 0 and price > 0:
-                    return handle_sell(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
+                
+                if item and price > 0:
+                    # Look in the last AI message to find the quantity they were discussing
+                    last_ai_message = shop_transactions[-1]["reply"]
+                    
+                    quantity_match = re.search(r"(\d+)\s+([A-Za-z]+)", last_ai_message)
+                    if quantity_match and quantity_match.group(2).lower() == item_raw.lower():
+                        quantity = int(quantity_match.group(1))
+                        
+                        # Default to 1 if we couldn't find a quantity
+                        quantity = max(1, quantity)
+                        
+                        # Check recent shop messages to determine if this was for buying or selling
+                        if "i can sell" in last_ai_message.lower() or "buy from me" in last_ai_message.lower():
+                            return handle_buy(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
+                        elif "i can buy" in last_ai_message.lower() or "sell to me" in last_ai_message.lower():
+                            return handle_sell(shop_id, item, quantity, price, session.get('user_data', get_initial_user_data()))
             except Exception:
-                continue  # If there's an error, try the next message
+                pass  # If parsing fails, we'll return None at the end
     
     return None
 
@@ -360,7 +418,32 @@ def handle_buy(shop_id, item, quantity, price, user_data):
         shop_specialty_discount = shop["discount_rate"]
     
     shop_price = round(current_market_price * shop_specialty_discount)
-    min_acceptable_price = round(shop_price * 0.9)  # Shop will accept at least 90% of their price
+    
+    # Dynamic negotiation factors
+    demand_factor = market_context["demand"][item]
+    inventory_factor = 1.0
+    
+    # If shop has high demand, they are less flexible on price
+    # If demand is low, they're more willing to negotiate
+    negotiation_flexibility = 0.9  # Base acceptance threshold
+    
+    # Adjust flexibility based on demand - higher demand means less flexibility
+    if demand_factor > 1.2:
+        # High demand - shop is less flexible
+        negotiation_flexibility = random.uniform(0.92, 0.95)
+    elif demand_factor < 0.8:
+        # Low demand - shop is more flexible
+        negotiation_flexibility = random.uniform(0.8, 0.88)
+    else:
+        # Normal demand - standard flexibility
+        negotiation_flexibility = random.uniform(0.85, 0.9)
+    
+    # If buying a lot, shop might be more flexible
+    if quantity >= 10:
+        negotiation_flexibility -= 0.05  # More flexible for bulk purchases
+    
+    # Calculate min acceptable price with all factors
+    min_acceptable_price = round(shop_price * negotiation_flexibility)
     
     # Shop decides whether to accept user's price
     if price >= min_acceptable_price:
@@ -404,12 +487,28 @@ def handle_buy(shop_id, item, quantity, price, user_data):
         user_data["transaction_history"].append(transaction)
         session['user_data'] = user_data
         
-        return f"Deal! You purchased {quantity} {item}(s) for ₹{price} each. Total cost: ₹{total_cost}. Your new wallet balance is ₹{user_data['wallet']}."
+        # Different success messages based on how good the deal was
+        if price > shop_price:
+            return f"Deal! You purchased {quantity} {item}(s) for ₹{price} each. Total cost: ₹{total_cost}. Your new wallet balance is ₹{user_data['wallet']}. I appreciate your generosity!"
+        elif price < shop_price:
+            return f"Deal! You purchased {quantity} {item}(s) for ₹{price} each. Total cost: ₹{total_cost}. Your new wallet balance is ₹{user_data['wallet']}. You drove a hard bargain!"
+        else:
+            return f"Deal! You purchased {quantity} {item}(s) for ₹{price} each. Total cost: ₹{total_cost}. Your new wallet balance is ₹{user_data['wallet']}."
     else:
+        # Dynamic rejection responses
+        price_difference = min_acceptable_price - price
         discount_info = ""
         if shop["specialty"] == item:
             discount_info = f" (with {(1-shop['discount_rate'])*100:.0f}% specialty discount)"
-        return f"I can't accept that price. The current market price for {item} is ₹{current_market_price}, and the best I can offer is ₹{shop_price}{discount_info} per unit. Please offer at least ₹{min_acceptable_price}."
+        
+        # Different responses based on how far off the offer was
+        if price_difference > 10:
+            return f"I can't accept that price. It's far too low. The current market price for {item} is ₹{current_market_price}, and my best offer is ₹{shop_price}{discount_info} per unit. Could you offer at least ₹{min_acceptable_price}?"
+        elif price_difference > 5:
+            return f"That's close, but still too low. The current market price for {item} is ₹{current_market_price}, and I can offer ₹{shop_price}{discount_info} per unit. How about ₹{min_acceptable_price}?"
+        else:
+            counter_offer = min_acceptable_price
+            return f"You're almost there! I can meet you at ₹{counter_offer} per {item}. The market price is ₹{current_market_price}, but I'd be willing to make this deal. What do you say?"
 
 def handle_sell(shop_id, item, quantity, price, user_data):
     """Handle user selling to shop"""
@@ -426,8 +525,33 @@ def handle_sell(shop_id, item, quantity, price, user_data):
     if item not in user_data["inventory"] or user_data["inventory"][item]["quantity"] < quantity:
         return f"You don't have enough {item}s to sell. You have {user_data['inventory'].get(item, {}).get('quantity', 0)} but want to sell {quantity}."
     
-    # Shop decides whether to accept user's price
-    max_acceptable_price = round(current_market_price * 1.1)  # Shop will pay at most 110% of market price
+    # Dynamic negotiation factors for selling
+    demand_factor = market_context["demand"][item]
+    
+    # Base flexibility - shop will pay more if demand is high, less if demand is low
+    negotiation_flexibility = 1.1  # Base threshold - will pay up to 110% of market price
+    
+    # Adjust flexibility based on demand
+    if demand_factor > 1.2:
+        # High demand - shop is willing to pay more
+        negotiation_flexibility = random.uniform(1.1, 1.2)
+    elif demand_factor < 0.8:
+        # Low demand - shop is less willing to pay premium
+        negotiation_flexibility = random.uniform(1.0, 1.05)
+    else:
+        # Normal demand - standard flexibility
+        negotiation_flexibility = random.uniform(1.05, 1.15)
+    
+    # Specialty adjustment - shops may pay more for items they specialize in
+    if shop["specialty"] == item:
+        negotiation_flexibility += 0.05
+    
+    # Quantity adjustment - might pay less per unit for large quantities
+    if quantity > 15:
+        negotiation_flexibility -= 0.03
+    
+    # Calculate max acceptable price
+    max_acceptable_price = round(current_market_price * negotiation_flexibility)
     
     if price <= max_acceptable_price:
         total_earning = price * quantity
@@ -457,16 +581,33 @@ def handle_sell(shop_id, item, quantity, price, user_data):
         user_data["transaction_history"].append(transaction)
         session['user_data'] = user_data
         
+        # Dynamic success messages based on the deal
         profit_message = ""
         if transaction_profit > 0:
             profit_message = f" You made a profit of ₹{transaction_profit}!"
         elif transaction_profit < 0:
             profit_message = f" You took a loss of ₹{abs(transaction_profit)}."
         
-        return f"Deal! You sold {quantity} {item}(s) for ₹{price} each. Total received: ₹{total_earning}.{profit_message} Your new wallet balance is ₹{user_data['wallet']}."
+        if price < current_market_price * 0.9:
+            return f"Deal! I'm getting a great bargain here. You sold {quantity} {item}(s) for ₹{price} each. Total received: ₹{total_earning}.{profit_message} Your new wallet balance is ₹{user_data['wallet']}."
+        elif price > current_market_price:
+            return f"Deal! You drove a hard bargain. You sold {quantity} {item}(s) for ₹{price} each. Total received: ₹{total_earning}.{profit_message} Your new wallet balance is ₹{user_data['wallet']}."
+        else:
+            return f"Deal! You sold {quantity} {item}(s) for ₹{price} each. Total received: ₹{total_earning}.{profit_message} Your new wallet balance is ₹{user_data['wallet']}."
     else:
-        max_price = round(current_market_price * 1.05)  # Shop typically pays 5% over market
-        return f"I can't pay that much for {item}. The current market price is ₹{current_market_price}, and I can offer at most ₹{max_price} per unit."
+        # Dynamic rejection responses
+        price_difference = price - max_acceptable_price
+        price_percentage = (price / current_market_price - 1) * 100
+        
+        # Different responses based on how far off the offer was
+        if price_percentage > 20:
+            return f"That's far too expensive! I can't pay that much for {item}. The current market price is ₹{current_market_price}, and I can offer at most ₹{max_acceptable_price} per unit."
+        elif price_percentage > 10:
+            counter_offer = max_acceptable_price
+            return f"Your price is a bit high. How about I pay you ₹{counter_offer} per {item} instead? That's still above the market rate of ₹{current_market_price}."
+        else:
+            counter_offer = max_acceptable_price
+            return f"We're close! I can pay you ₹{counter_offer} per {item}. That's the best I can do, which is still {((counter_offer/current_market_price)-1)*100:.1f}% above the market price of ₹{current_market_price}."
 
 @app.route('/market')
 def market():
